@@ -1,0 +1,45 @@
+version: "3.9"
+
+services:
+  redis:
+    image: redis:7
+    container_name: redis
+    ports:
+      - "6379:6379"
+
+  users-api:
+    build: ./users-api
+    ports:
+      - "8081:8080"
+    depends_on:
+      - redis
+
+  auth-api:
+    build: ./auth-api
+    ports:
+      - "8082:8080"
+    depends_on:
+      - redis
+
+  todos-api:
+    build: ./todos-api
+    ports:
+      - "8083:8080"
+    depends_on:
+      - redis
+      - auth-api
+      - users-api
+
+  log-message-processor:
+    build: ./log-message-processor
+    depends_on:
+      - redis
+
+  frontend:
+    build: ./frontend
+    ports:
+      - "3000:8080"
+    depends_on:
+      - users-api
+      - auth-api
+      - todos-api

@@ -7,13 +7,14 @@ from py_zipkin.zipkin import zipkin_span, ZipkinAttrs, generate_random_64bit_str
 import time
 import random
 
+
 def log_message(message):
     time_delay = random.randrange(0, 2000)
     time.sleep(time_delay / 1000)
     print('message received after waiting for {}ms: {}'.format(time_delay, message))
 
 if __name__ == '__main__':
-    redis_host = os.environ['REDIS_HOST']
+    redis_host = os.getenv('REDIS_HOST', 'redis')
     redis_port = int(os.environ['REDIS_PORT'])
     redis_channel = os.environ['REDIS_CHANNEL']
     zipkin_url = os.environ['ZIPKIN_URL'] if 'ZIPKIN_URL' in os.environ else ''

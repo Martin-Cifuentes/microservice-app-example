@@ -1,4 +1,4 @@
-version: "3.9"
+
 
 services:
   redis:
@@ -34,6 +34,11 @@ services:
     build: ./log-message-processor
     depends_on:
       - redis
+    environment:
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_CHANNEL=log_messages
+      - ZIPKIN_URL=http://zipkin:9411/api/v2/spans
 
   frontend:
     build: ./frontend

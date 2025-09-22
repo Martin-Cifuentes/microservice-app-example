@@ -1,4 +1,4 @@
-# Ingesoft 5 - Martín Cifuentes A00300016 - 
+# Ingesoft 5 - Martín Cifuentes A00300016 - Sebastian Erazo A00400086
 
 # Microservice App - PRFT Devops Training
 

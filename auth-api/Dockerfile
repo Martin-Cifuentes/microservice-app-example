@@ -1,33 +1,37 @@
-# syntax=docker/dockerfile:1
+# ---------- Etapa 1: Build ----------
+FROM golang:1.18 AS build
 
-# ---------- build ----------
-FROM golang:1.18-alpine AS build
-WORKDIR /src
-RUN apk add --no-cache git
+# Crear carpeta de trabajo
+WORKDIR /app
 
-# Copiamos el código
-COPY . .
+# Copiar go.mod si ya existe (si no, lo generas antes con go mod init && go mod tidy)
+COPY go.mod go.sum* ./
 
-# Forzamos módulos; si no hay go.mod, lo inicializamos
-ENV GO111MODULE=on
-RUN [ -f go.mod ] || go mod init auth-api
+# Descargar dependencias
 RUN go mod tidy
 
-# Compilación estática
-RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o /out/auth-api
+# Copiar el resto del código fuente
+COPY . .
 
-# ---------- runtime ----------
-FROM alpine:3.20
+# Compilar el binario
+RUN go build -o auth-api
+
+# ---------- Etapa 2: Runtime ----------
+FROM gcr.io/distroless/base-debian11
+
 WORKDIR /app
-COPY --from=build /out/auth-api /app/auth-api
 
-# Variables útiles (ajustables en compose)
-ENV AUTH_API_PORT=8000 \
-    USERS_API_ADDRESS=http://users-api:8083 \
-    JWT_SECRET=PRFT \
-    ZIPKIN_URL=http://zipkin:9411 \
-    ZIPKIN_ENDPOINT=http://zipkin:9411/api/v2/spans \
-    SERVICE_NAME=auth-api
+# Copiar binario desde la etapa de build
+COPY --from=build /app/auth-api .
 
+# Variables de entorno (puedes sobreescribirlas en docker-compose o docker run)
+ENV AUTH_API_PORT=8000
+ENV USERS_API_ADDRESS=http://users-api:8083
+ENV JWT_SECRET=myfancysecret
+ENV ZIPKIN_URL=http://zipkin:9411/api/v2/spans
+
+# Exponer puerto del servicio
 EXPOSE 8000
-ENTRYPOINT ["/app/auth-api"]
+
+# Ejecutar servicio
+ENTRYPOINT ["./auth-api"]

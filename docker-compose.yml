@@ -1,109 +1,90 @@
-version: "3.9"
 
 services:
+  redis-todo:
+    image: redis:6.2
+    container_name: redis-todo
+    ports:
+      - "6379:6379"
+    networks:
+      - app-network
+
   zipkin:
-    image: openzipkin/zipkin:2
+    image: openzipkin/zipkin:latest
     container_name: zipkin
     ports:
       - "9411:9411"
-    environment:
-      - STORAGE_TYPE=mem
-    restart: unless-stopped
-
-  redis:
-    image: redis:7-alpine
-    container_name: redis
-    ports:
-      - "6379:6379"
-    healthcheck:
-      test: ["CMD-SHELL", "redis-cli ping | grep PONG"]
-      interval: 10s
-      timeout: 3s
-      retries: 5
-    restart: unless-stopped
+    networks:
+      - app-network
 
   users-api:
-    build: ./users-api
-    image: micro/users-api:latest
+    build:
+      context: ./users-api
     container_name: users-api
-    environment:
-      - SERVER_PORT=8083
-      - JWT_SECRET=${JWT_SECRET}
-      - ZIPKIN_URL=http://zipkin:9411
-      - ZIPKIN_ENDPOINT=http://zipkin:9411/api/v2/spans
-      - SERVICE_NAME=users-api
-    depends_on:
-      - zipkin
     ports:
       - "8083:8083"
-    restart: unless-stopped
+    depends_on:
+      - zipkin
+    networks:
+      - app-network
 
   auth-api:
-    build: ./auth-api
-    image: micro/auth-api:latest
+    build:
+      context: ./auth-api
     container_name: auth-api
-    environment:
-      - AUTH_API_PORT=8000
-      - USERS_API_ADDRESS=http://users-api:8083
-      - JWT_SECRET=${JWT_SECRET}
-      - ZIPKIN_URL=http://zipkin:9411
-      - ZIPKIN_ENDPOINT=http://zipkin:9411/api/v2/spans
-      - SERVICE_NAME=auth-api
+    ports:
+      - "8000:8000"
     depends_on:
       - users-api
       - zipkin
-    ports:
-      - "8000:8000"
-    restart: unless-stopped
+    networks:
+      - app-network
 
   todos-api:
-    build: ./todos-api
-    image: micro/todos-api:latest
+    build:
+      context: ./todos-api
     container_name: todos-api
-    environment:
-      - TODO_API_PORT=8082
-      - JWT_SECRET=${JWT_SECRET}
-      - REDIS_HOST=redis
-      - REDIS_PORT=6379
-      - REDIS_CHANNEL=log_channel
-      - ZIPKIN_URL=http://zipkin:9411
-      - ZIPKIN_ENDPOINT=http://zipkin:9411/api/v2/spans
-      - SERVICE_NAME=todos-api
-    depends_on:
-      - redis
-      - auth-api
-      - zipkin
     ports:
       - "8082:8082"
-    restart: unless-stopped
-
-  log-message-processor:
-    build: ./log-message-processor
-    image: micro/log-processor:latest
-    container_name: log-message-processor
+    depends_on: 
+      - redis-todo
+      - zipkin
+    networks:
+      - app-network
     environment:
-      - REDIS_HOST=redis
+      - REDIS_HOST=redis-todo
       - REDIS_PORT=6379
       - REDIS_CHANNEL=log_channel
-      - ZIPKIN_URL=http://zipkin:9411
-      - ZIPKIN_ENDPOINT=http://zipkin:9411/api/v2/spans
-      - SERVICE_NAME=log-message-processor
-    depends_on:
-      - redis
-      - zipkin
-    restart: unless-stopped
+      - ZIPKIN_URL=http://zipkin:9411/api/v2/spans
 
   frontend:
-    build: ./frontend
-    image: micro/frontend:latest
-    depends_on: [auth-api, todos-api]
-    environment:
-      HOST: 0.0.0.0
-      PORT: 3000                 # el dev-server usa 3000 por defecto
-      AUTH_API_ADDRESS: http://auth-api:8000
-      TODOS_API_ADDRESS: http://todos-api:8082
-      ZIPKIN_URL: http://zipkin:9411/api/v2/spans
-    command: ["npm","run","dev"] # fuerza el webpack dev-server
+    build:
+      context: ./frontend
+    container_name: frontend
     ports:
-      - "3000:3000"
-    restart: unless-stopped
+      - "3000:3000"  
+    depends_on:
+      - auth-api
+      - todos-api
+      - zipkin
+    networks:
+      - app-network
+
+  log-message-processor:
+    build:
+      context: ./log-message-processor
+    container_name: log-message-processor
+    depends_on:
+      - redis-todo
+      - zipkin
+    environment:
+      - REDIS_HOST=redis-todo
+      - REDIS_PORT=6379
+      - REDIS_CHANNEL=log_channel
+      - ZIPKIN_URL=http://zipkin:9411/api/v2/spans
+      - PYTHONUNBUFFERED=1
+    networks:
+      - app-network
+
+networks:
+  app-network:
+    driver: bridge

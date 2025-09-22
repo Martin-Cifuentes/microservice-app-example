@@ -1,21 +1,21 @@
-FROM node:14
+# Etapa 1: construir la app con Node 8
+FROM node:8.17.0 AS build
 WORKDIR /app
 
-# Instala TODAS las dependencias (incluye dev)
 COPY package*.json ./
-RUN npm install --no-audit --no-fund --loglevel=error
+RUN npm install
 
-# Código
 COPY . .
+RUN npm run build
 
-ENV PORT=8080 \
-    AUTH_API_ADDRESS=http://auth-api:8000 \
-    TODOS_API_ADDRESS=http://todos-api:8082 \
-    ZIPKIN_URL=http://zipkin:9411 \
-    ZIPKIN_ENDPOINT=http://zipkin:9411/api/v2/spans \
-    SERVICE_NAME=frontend
+# Etapa 2: servir con Nginx
+FROM nginx:alpine
 
-EXPOSE 8080
-# Si tu package.json usa "dev" en lugar de "start", cambia el CMD:
-# CMD ["npm","run","dev"]
-CMD ["npm","start"]
+# Copiar el build generado
+COPY --from=build /app/dist /usr/share/nginx/html
+
+# Copiar la configuración de Nginx
+COPY nginx.conf /etc/nginx/conf.d/default.conf
+
+EXPOSE 3000
+CMD ["nginx", "-g", "daemon off;"]

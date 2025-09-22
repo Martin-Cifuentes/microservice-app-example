@@ -1,16 +1,20 @@
-FROM python:3.10-slim
+# Usar Python 3.7 (versión común para este tipo de procesadores)
+FROM python:3.7-slim
+
 WORKDIR /app
 
+RUN apt-get update && apt-get install -y \
+    build-essential \
+    gcc \
+    python3-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+
+#Install code dependecies.
+RUN pip install  -r requirements.txt
 
 COPY . .
-
-ENV REDIS_HOST=redis \
-    REDIS_PORT=6379 \
-    REDIS_CHANNEL=log_channel \
-    ZIPKIN_URL=http://zipkin:9411 \
-    ZIPKIN_ENDPOINT=http://zipkin:9411/api/v2/spans \
-    SERVICE_NAME=log-message-processor
-
-CMD ["python","main.py"]
+ENV PYTHONUNBUFFERED=1
+CMD [ "python","-u", "main.py" ]

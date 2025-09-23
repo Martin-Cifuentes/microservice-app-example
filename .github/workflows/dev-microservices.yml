@@ -1,0 +1,141 @@
+name: Development Pipeline - Microservices
+
+on:
+  push:
+    branches: [ "dev" ]
+  pull_request:
+    branches: [ "dev" ]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  build-and-test:
+    name: Build, Test & Push Docker (Development)
+    runs-on: ubuntu-latest
+
+    strategy:
+      matrix:
+        service: [ "users-api", "auth-api", "todos-api", "log-message-processor" ]
+
+    defaults:
+      run:
+        working-directory: ${{ matrix.service }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up JDK (Java - users-api)
+        if: matrix.service == 'users-api'
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Go (auth-api)
+        if: matrix.service == 'auth-api'
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.20'
+
+      - name: Set up Node.js (todos-api)
+        if: matrix.service == 'todos-api'
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+
+      - name: Set up Python (log-message-processor)
+        if: matrix.service == 'log-message-processor'
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      - name: Install dependencies (safe detection)
+        run: |
+          set -e
+          echo "Service: ${{ matrix.service }}"
+          if [[ "${{ matrix.service }}" == "users-api" ]]; then
+            if [ -f pom.xml ]; then
+              mvn -B clean install -DskipTests
+            else
+              echo "No pom.xml — saltando instalación Java"
+            fi
+          elif [[ "${{ matrix.service }}" == "auth-api" ]]; then
+            if [ -f go.mod ]; then
+              go mod download
+            else
+              echo "No go.mod — saltando instalación Go"
+            fi
+          elif [[ "${{ matrix.service }}" == "todos-api" ]]; then
+            if [ -f package.json ]; then
+              npm ci
+            else
+              echo "No package.json — saltando npm install"
+            fi
+          elif [[ "${{ matrix.service }}" == "log-message-processor" ]]; then
+            if [ -f requirements.txt ]; then
+              python -m pip install -r requirements.txt
+            else
+              echo "No requirements.txt — saltando pip install"
+            fi
+          fi
+
+      - name: Run tests (only if present)
+        run: |
+          set -e
+          echo "Running tests for ${{ matrix.service }}"
+          if [[ "${{ matrix.service }}" == "users-api" ]]; then
+            if [ -f pom.xml ]; then
+              mvn test
+            else
+              echo "No pom.xml — no hay tests"
+            fi
+          elif [[ "${{ matrix.service }}" == "auth-api" ]]; then
+            # Ejecuta go test (si no hay tests, go test devuelve 0)
+            if [ -f go.mod ] || ls *.go 1>/dev/null 2>&1; then
+              go test ./...
+            else
+              echo "No go files — no hay tests"
+            fi
+          elif [[ "${{ matrix.service }}" == "todos-api" ]]; then
+            if [ -f package.json ] && grep -q "\"test\"" package.json; then
+              npm test
+            else
+              echo "No script 'test' en package.json — saltando tests"
+            fi
+          elif [[ "${{ matrix.service }}" == "log-message-processor" ]]; then
+            if [ -d tests ] || ls test_*.py 1>/dev/null 2>&1 || ls *_test.py 1>/dev/null 2>&1; then
+              pytest
+            else
+              echo "No tests detectados para Python — saltando pytest"
+            fi
+          fi
+
+      - name: Log in to container registry
+        uses: docker/login-action@v2
+        with:
+          registry: ${{ secrets.REGISTRY_URL }}
+          username: ${{ secrets.REG_USERNAME }}
+          password: ${{ secrets.REG_PASSWORD }}
+
+      - name: Build Docker image (tries Dockerfile in folder)
+        run: |
+          set -e
+          IMAGE="${{ secrets.REGISTRY_URL }}/dev-${{ matrix.service }}:${{ github.sha }}"
+          echo "Building $IMAGE from folder ${{ matrix.service }}"
+          # intenta usar Dockerfile estándar, si falla intenta sin -f
+          if [ -f Dockerfile ]; then
+            docker build -t "$IMAGE" .
+          else
+            # fallback: si hay un Dockerfile.* o ninguno -> build contextual
+            docker build -t "$IMAGE" .
+          fi
+          echo "Built $IMAGE"
+
+      - name: Push Docker image
+        run: |
+          IMAGE="${{ secrets.REGISTRY_URL }}/dev-${{ matrix.service }}:${{ github.sha }}"
+          docker push "$IMAGE"

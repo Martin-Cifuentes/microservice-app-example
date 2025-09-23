@@ -69,7 +69,10 @@ services:
       - REDIS_CHANNEL=log_channel
       - ZIPKIN_URL=http://zipkin:9411/api/v2/spans
       - JWT_SECRET=${JWT_SECRET}
-      - TODOS_CACHE_TTL_SECONDS=60   
+      - TODOS_CACHE_TTL_SECONDS=60
+      - REDIS_CB_TIMEOUT_MS=300        # tiempo máx por intento
+      - REDIS_CB_ERROR_PCT=50          # % de error para abrir
+      - REDIS_CB_RESET_MS=10000        # ventana para half-open
 
 
   frontend:

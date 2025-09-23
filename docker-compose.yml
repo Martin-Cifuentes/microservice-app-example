@@ -47,8 +47,8 @@ services:
       - app-network
     environment:
       - AUTH_API_PORT=8000
-      - USERS_API_ADDRESS=http://users-api:8083  # ⬅️ necesario para validar credenciales
-      - JWT_SECRET=${JWT_SECRET}                  # ⬅️ mismo secreto
+      - USERS_API_ADDRESS=http://users-api:8083
+      - JWT_SECRET=${JWT_SECRET}                  
       - ZIPKIN_URL=http://zipkin:9411/api/v2/spans
 
 
@@ -68,7 +68,8 @@ services:
       - REDIS_PORT=6379
       - REDIS_CHANNEL=log_channel
       - ZIPKIN_URL=http://zipkin:9411/api/v2/spans
-      - JWT_SECRET=${JWT_SECRET}   
+      - JWT_SECRET=${JWT_SECRET}
+      - TODOS_CACHE_TTL_SECONDS=60   
 
 
   frontend:

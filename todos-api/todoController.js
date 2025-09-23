@@ -1,96 +1,118 @@
+// todos-api/todoController.js
 'use strict';
+
 const cache = require('memory-cache');
-const {Annotation, 
-    jsonEncoder: {JSON_V2}} = require('zipkin');
 
-const OPERATION_CREATE = 'CREATE',
-      OPERATION_DELETE = 'DELETE';
+const OPERATION_CREATE = 'CREATE';
+const OPERATION_DELETE = 'DELETE';
 
-class TodoController {
-    constructor({tracer, redisClient, logChannel}) {
-        this._tracer = tracer;
-        this._redisClient = redisClient;
-        this._logChannel = logChannel;
+const keyForUser = (username) => `todos:${username}`;
+const log = (...a) => console.log(new Date().toISOString(), ...a);
+
+module.exports = function ({ tracer, redisClient, logChannel, cacheTtl }) {
+  // --------- helpers (tu “DB” en memoria) ----------
+  function _getTodoData(userID) {
+    let data = cache.get(userID);
+    if (!data) {
+      data = {
+        items: {
+          '1': { id: 1, content: 'Create new todo' },
+          '2': { id: 2, content: 'Update me' },
+          '3': { id: 3, content: 'Delete example ones' }
+        },
+        lastInsertedID: 3
+      };
+      _setTodoData(userID, data);
     }
+    return data;
+  }
 
-    // TODO: these methods are not concurrent-safe
-    list (req, res) {
-        const data = this._getTodoData(req.user.username)
+  function _setTodoData(userID, data) {
+    cache.put(userID, data);
+  }
 
-        res.json(data.items)
-    }
+  function _logOperation(opName, username, todoId) {
+    tracer.scoped(() => {
+      const traceId = tracer.id;
+      try {
+        redisClient.publish(
+          logChannel,
+          JSON.stringify({ zipkinSpan: traceId, opName, username, todoId })
+        );
+      } catch (_) {}
+    });
+  }
 
-    create (req, res) {
-        // TODO: must be transactional and protected for concurrent access, but
-        // the purpose of the whole example app it's enough
-        const data = this._getTodoData(req.user.username)
-        const todo = {
-            content: req.body.content,
-            id: data.lastInsertedID
+  // ----------------- handlers ----------------------
+  // GET /todos  -> cache-aside
+  function list(req, res) {
+    const username = (req.user && req.user.username) || 'unknown';
+    const rkey = keyForUser(username);
+
+    redisClient.get(rkey, (err, cached) => {
+      if (!err && cached) {
+        log('[cache-hit]', rkey);
+        try {
+          return res.json(JSON.parse(cached)); // devolvemos el mapa { id: {..}, ... }
+        } catch (_) {
+          // si falla el parseo, seguimos a MISS
         }
-        data.items[data.lastInsertedID] = todo
+      }
 
-        data.lastInsertedID++
-        this._setTodoData(req.user.username, data)
+      log('[cache-miss]', rkey);
+      const data = _getTodoData(username);
+      const payload = data.items;
 
-        this._logOperation(OPERATION_CREATE, req.user.username, todo.id)
+      try {
+        redisClient.setex(rkey, cacheTtl, JSON.stringify(payload));
+      } catch (_) {}
 
-        res.json(todo)
-    }
+      return res.json(payload);
+    });
+  }
 
-    delete (req, res) {
-        const data = this._getTodoData(req.user.username)
-        const id = req.params.taskId
-        delete data.items[id]
-        this._setTodoData(req.user.username, data)
+  // POST /todos  -> muta y EVICT
+  function create(req, res) {
+    const username = (req.user && req.user.username) || 'unknown';
+    const rkey = keyForUser(username);
 
-        this._logOperation(OPERATION_DELETE, req.user.username, id)
+    const data = _getTodoData(username);
+    const id = (data.lastInsertedID || 0) + 1;
+    const todo = { id, content: (req.body && req.body.content) || '' };
 
-        res.status(204)
-        res.send()
-    }
+    data.items[id] = todo;
+    data.lastInsertedID = id;
+    _setTodoData(username, data);
 
-    _logOperation (opName, username, todoId) {
-        this._tracer.scoped(() => {
-            const traceId = this._tracer.id;
-            this._redisClient.publish(this._logChannel, JSON.stringify({
-                zipkinSpan: traceId,
-                opName: opName,
-                username: username,
-                todoId: todoId,
-            }))
-        })
-    }
+    _logOperation(OPERATION_CREATE, username, id);
 
-    _getTodoData (userID) {
-        var data = cache.get(userID)
-        if (data == null) {
-            data = {
-                items: {
-                    '1': {
-                        id: 1,
-                        content: "Create new todo",
-                    },
-                    '2': {
-                        id: 2,
-                        content: "Update me",
-                    },
-                    '3': {
-                        id: 3,
-                        content: "Delete example ones",
-                    }
-                },
-                lastInsertedID: 3
-            }
+    try {
+      redisClient.del(rkey, () => log('[cache-evict]', rkey));
+    } catch (_) {}
 
-            this._setTodoData(userID, data)
-        }
-        return data
-    }
+    return res.status(201).json(todo);
+  }
 
-    _setTodoData (userID, data) {
-        cache.put(userID, data)
-    }
-}
+  // DELETE /todos/:taskId  -> muta y EVICT
+  function remove(req, res) {
+    const username = (req.user && req.user.username) || 'unknown';
+    const rkey = keyForUser(username);
+    const id = String(req.params.taskId);
 
-module.exports = TodoController
+    const data = _getTodoData(username);
+    const existed = !!data.items[id];
+    delete data.items[id];
+    _setTodoData(username, data);
+
+    _logOperation(OPERATION_DELETE, username, id);
+
+    try {
+      redisClient.del(rkey, () => log('[cache-evict]', rkey));
+    } catch (_) {}
+
+    if (!existed) return res.status(404).json({ message: 'not found' });
+    return res.status(204).send();
+  }
+
+  return { list, create, remove };
+};

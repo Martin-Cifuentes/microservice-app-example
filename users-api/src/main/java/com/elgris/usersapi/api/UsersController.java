@@ -19,7 +19,7 @@ public class UsersController {
     private UserRepository userRepository;
 
     @Autowired
-    private UsersService usersService; // <-- nuevo
+    private UsersService usersService;
 
     @RequestMapping(value = "/", method = RequestMethod.GET)
     public List<User> getUsers() {

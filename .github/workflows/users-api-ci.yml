@@ -64,16 +64,28 @@ jobs:
 
       - name: 'Mint JWT (secret: myfancysecret)'
         id: jwt
+        shell: bash
+        env:
+            JWT_SECRET: myfancysecret
         run: |
-          TOKEN=$(python3 - <<'PY'
-            import jwt, time
-            print(jwt.encode(
-                {"username":"admin","firstname":"Foo","lastname":"Bar","role":"ADMIN","exp":int(time.time())+3600},
-                "myfancysecret", algorithm="HS256"
-            ))
+            set-euo pipefall
+            python3 - <<'PY' > token.txt
+            import os, time
+            import jwt
+            secret = os.environ['JWT_SECRET']
+            payload = {
+                "username":"admin",
+                "firstname":"Foo",
+                "lastname":"Bar",
+                "role":"ADMIN",
+                "exp": int(time.time()) + 3600
+            }
+            tok = jwt.encode(payload, secret, algorithm="HS256")
+            print(tok.decode("utf-8") if isinstance(tok, (bytes, bytearray)) else tok)
             PY
-            )
-          echo "TOKEN=$TOKEN" >> $GITHUB_ENV
+             echo "TOKEN=$(cat token.txt)" >> $GITHUB_ENV
+            
+
 
       - name: 'Smoke: GET /users/admin (200)'
         run: |

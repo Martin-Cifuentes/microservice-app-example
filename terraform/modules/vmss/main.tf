@@ -1,25 +1,15 @@
-variable "name" {}
-variable "instance_count" { 
-    type = number 
-    default = 2 
-}
-variable "vm_size" { default = "Standard_B2s" }
-variable "subnet_id" {}
-variable "admin_username" {}
-variable "admin_ssh_key" {}
-
 resource "azurerm_linux_virtual_machine_scale_set" "this" {
   name                = var.name
-  resource_group_name = azurerm_resource_group.rg.name
-  location            = azurerm_resource_group.rg.location
+  resource_group_name = var.resource_group_name
+  location            = var.location
   sku                 = var.vm_size
   instances           = var.instance_count
   admin_username      = var.admin_username
 
   source_image_reference {
     publisher = "Canonical"
-    offer     = "UbuntuServer"
-    sku       = "22_04-lts"
+    offer     = "0001-com-ubuntu-server-jammy"
+    sku       = "22_04-lts-gen2"
     version   = "latest"
   }
 
@@ -35,6 +25,7 @@ resource "azurerm_linux_virtual_machine_scale_set" "this" {
       name      = "${var.name}-ipcfg"
       subnet_id = var.subnet_id
       primary   = true
+      load_balancer_backend_address_pool_ids = var.backend_address_pool_id != null ? [var.backend_address_pool_id] : null
     }
   }
 
@@ -45,24 +36,23 @@ resource "azurerm_linux_virtual_machine_scale_set" "this" {
 
   upgrade_mode = "Automatic"
 
-  # extensibility: custom script extension to install app
-  extension {
-    name = "customScript"
-    publisher = "Microsoft.Azure.Extensions"
-    type = "CustomScript"
-    type_handler_version = "2.1"
-    settings = <<SETTINGS
-      {
-        "commandToExecute": "bash /tmp/install-${var.name}.sh"
-      }
-    SETTINGS
+  dynamic "extension" {
+    for_each = var.enable_custom_script ? [1] : []
+    content {
+      name                 = "customScript"
+      publisher            = "Microsoft.Azure.Extensions"
+      type                 = "CustomScript"
+      type_handler_version = "2.1"
+      settings = <<SETTINGS
+        {
+          "fileUris": ["${var.custom_script_uri}"],
+          "commandToExecute": "${var.custom_script_command}"
+        }
+      SETTINGS
+    }
   }
 
   tags = {
     service = var.name
   }
-}
-
-output "vmss_id" {
-  value = azurerm_linux_virtual_machine_scale_set.this.id
 }

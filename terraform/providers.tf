@@ -10,4 +10,13 @@ terraform {
 
 provider "azurerm" {
   features {}
+  subscription_id = var.subscription_id
+}
+
+resource "azurerm_public_ip" "main" {
+  name                = "${var.project_name}-public-ip"
+  location            = azurerm_resource_group.rg.location
+  resource_group_name = azurerm_resource_group.rg.name
+  allocation_method   = "Static"
+  sku                 = "Standard"
 }

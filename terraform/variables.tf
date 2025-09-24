@@ -1,6 +1,6 @@
 variable "location" {
   type    = string
-  default = "eastus"
+  default = "eastus2"
 }
 
 variable "project_name" {
@@ -9,8 +9,7 @@ variable "project_name" {
 }
 
 variable "resource_group_name" {
-  type    = string
-  default = "${var.project_name}-rg"
+  default = "microserviceapp-rg" // Usa un valor fijo o define en otro lado
 }
 
 variable "vnet_cidr" {
@@ -28,4 +27,10 @@ variable "admin_username" {
 variable "admin_ssh_key" {
   type        = string
   description = "public ssh key content"
+}
+
+variable "subscription_id" {
+  description = "Azure Subscription ID"
+  type        = string
+  sensitive   = true  
 }

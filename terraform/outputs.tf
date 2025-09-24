@@ -15,7 +15,7 @@ output "application_gateway_public_ip" {
 
 output "redis_hostname" {
   description = "Hostname de Azure Cache for Redis"
-  value       = azurerm_redis_cache.redis.host_name
+  value       = azurerm_redis_cache.redis.hostname
 }
 
 output "redis_primary_key" {
@@ -29,12 +29,6 @@ output "log_analytics_workspace_id" {
   value       = azurerm_log_analytics_workspace.la.id
 }
 
-# Ejemplo: IPs privadas de los frontends (si necesitas debug interno)
-output "frontend_vmss_private_ips" {
-  description = "IPs privadas de las instancias frontend"
-  value       = module.frontend.private_ips
-}
-
 # IDs de todos los VMSS desplegados (útil para autoscaling, monitorización, etc.)
 output "vmss_ids" {
   description = "Lista de IDs de todos los Virtual Machine Scale Sets"
@@ -45,4 +39,12 @@ output "vmss_ids" {
     module.todosapi.vmss_id,
     module.log_processor.vmss_id,
   ]
+}
+
+resource "azurerm_log_analytics_workspace" "la" {
+  name                = "${var.project_name}-loganalytics"
+  location            = azurerm_resource_group.rg.location
+  resource_group_name = azurerm_resource_group.rg.name
+  sku                 = "PerGB2018"
+  retention_in_days   = 30
 }

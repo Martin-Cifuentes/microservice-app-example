@@ -1,0 +1,88 @@
+name: users-api CI
+
+on:
+  push:
+    paths:
+      - 'users-api/**'
+      - '.github/workflows/users-api-ci.yml'
+  pull_request:
+    paths:
+      - 'users-api/**'
+      - '.github/workflows/users-api-ci.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: users-api-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-test-docker-smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # Build & test Java 8 (Spring Boot 1.5.x)
+      - name: Set up Temurin JDK 8
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '8'
+
+      - name: Cache Maven
+        uses: actions/cache@v4
+        with:
+          path: ~/.m2/repository
+          key: m2-${{ runner.os }}-${{ hashFiles('**/pom.xml') }}
+          restore-keys: |
+            m2-${{ runner.os }}-
+
+      - name: Build & test (Maven)
+        working-directory: users-api
+        run: |
+          ./mvnw -B -DskipTests=false test
+          ./mvnw -B -DskipTests package
+
+      - name: Build Docker image
+        run: docker build -t users-api:ci ./users-api
+
+      - name: Run container
+        run: |
+          docker run -d --rm --name users-api -p 8083:8083 users-api:ci
+          # espera a que arranque Tomcat
+          for i in {1..30}; do
+            if curl -s -o /dev/null http://localhost:8083; then break; fi
+            sleep 1
+          done || (echo "users-api no inició" && docker logs users-api && exit 1)
+
+      - name: Install Python & PyJWT (to mint a JWT)
+        run: |
+          sudo apt-get update -y
+          sudo apt-get install -y python3-pip
+          pip3 install pyjwt
+
+      - name: 'Mint JWT (secret: myfancysecret)'
+        id: jwt
+        run: |
+          TOKEN=$(python3 - <<'PY'
+            import jwt, time
+            print(jwt.encode(
+                {"username":"admin","firstname":"Foo","lastname":"Bar","role":"ADMIN","exp":int(time.time())+3600},
+                "myfancysecret", algorithm="HS256"
+            ))
+            PY
+            )
+          echo "TOKEN=$TOKEN" >> $GITHUB_ENV
+
+      - name: 'Smoke: GET /users/admin (200)'
+        run: |
+          code=$(curl -s -o /dev/null -w '%{http_code}' \
+            -H "Authorization: Bearer $TOKEN" \
+            http://localhost:8083/users/admin)
+          echo "HTTP $code"
+          test "$code" -eq 200
+
+      - name: Teardown
+        if: always()
+        run: docker stop users-api || true

@@ -68,7 +68,7 @@ jobs:
         env:
             JWT_SECRET: myfancysecret
         run: |
-            set -euo pipefall
+            set -euo pipefail
             python3 - <<'PY' > token.txt
             import os, time
             import jwt

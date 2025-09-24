@@ -68,7 +68,7 @@ jobs:
         env:
             JWT_SECRET: myfancysecret
         run: |
-            set-euo pipefall
+            set -euo pipefall
             python3 - <<'PY' > token.txt
             import os, time
             import jwt
@@ -85,8 +85,6 @@ jobs:
             PY
              echo "TOKEN=$(cat token.txt)" >> $GITHUB_ENV
             
-
-
       - name: 'Smoke: GET /users/admin (200)'
         run: |
           code=$(curl -s -o /dev/null -w '%{http_code}' \

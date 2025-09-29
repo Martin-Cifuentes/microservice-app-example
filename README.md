@@ -1,11 +1,22 @@
 ## Ingesoft 5 - Martín Cifuentes A00300016 - Sebastian Erazo A00400086
 
+## Estrategia de Branching Desarrollo
+
+- `main` : rama estable, protegida  
+- `develop` : rama de integración continua  
+- `feature/*` : nuevas funcionalidades por servicio  
+- `hotfix/*` : correcciones urgentes
+
+### Reglas generales de Pull Request (PR)
+
+- Las PRs deben ser revisadas por al menos un revisor  
+- Debe ejecutarse `terraform plan` (o comando equivalente) como validación  
+- No se permite merge directo a ramas protegidas sin pasar las validaciones  
+
 
 # Patrones implementados: Cache-Aside y Circuit Breaker
 
 Este documento resume la implementación de **Cache-Aside** y **Circuit Breaker** dentro del proyecto de microservicios, usando las APIs `users-api` y `todos-api`.
-
----
 
 ## Arquitectura
 
@@ -21,7 +32,6 @@ Este documento resume la implementación de **Cache-Aside** y **Circuit Breaker*
   - Estados: `CLOSED → OPEN → HALF-OPEN`  
   - Fallback: cache o datos mínimos
 
----
 
 ## Flujo Cache-Aside
 
@@ -32,8 +42,6 @@ Este documento resume la implementación de **Cache-Aside** y **Circuit Breaker*
    - Si miss → llama a `users-api` (bajo breaker).  
    - Si breaker abierto → usa cache/fallback.  
 
----
-
 ## Circuit Breaker
 
 - Implementado en **todos-api**.  
@@ -42,8 +50,6 @@ Este documento resume la implementación de **Cache-Aside** y **Circuit Breaker*
   - Si breaker **OPEN** → usar cache.  
   - Si no hay cache → respuesta degradada (mínima).  
   - Al recuperar `users-api`, breaker pasa de **HALF-OPEN → CLOSED**.  
-
----
 
 ## Endpoints principales
 
@@ -55,8 +61,6 @@ Este documento resume la implementación de **Cache-Aside** y **Circuit Breaker*
   - `GET /todos?userId=:id`  
   - `GET /health`  
 
----
-
 ## Pruebas realizadas
 
 1. **Cache hits/misses**: primer GET es miss, siguientes son hit; TTL verificado.  
@@ -66,8 +70,6 @@ Este documento resume la implementación de **Cache-Aside** y **Circuit Breaker*
    - `todos-api` responde desde cache o fallback.  
    - Al recuperarse, breaker cierra.  
 4. **Carga ligera**: mejora tiempos con cache.  
-
----
 
 ## Observabilidad
 

@@ -16,21 +16,25 @@ const redisClient = require("redis").createClient({
   host: process.env.REDIS_HOST || 'localhost',
   port: process.env.REDIS_PORT || 6379,
   retry_strategy: function (options) {
-      if (options.error && options.error.code === 'ECONNREFUSED') {
-          return new Error('The server refused the connection');
-      }
-      if (options.total_retry_time > 1000 * 60 * 60) {
-          return new Error('Retry time exhausted');
-      }
-      if (options.attempt > 10) {
-          console.log('reattemtping to connect to redis, attempt #' + options.attempt)
-          return undefined;
-      }
-      return Math.min(options.attempt * 100, 2000);
-  }        
+
+    if (options.total_retry_time > 1000 * 60 * 60) {
+      return new Error('Retry time exhausted');
+    }
+    // No cortar reconexión: devolver siempre un delay
+    const delay = Math.min(options.attempt * 100, 3000);
+    console.log('[redis] reconnect in', delay, 'ms (attempt', options.attempt, ')');
+    return delay;
+  }
 });
+
+redisClient.on('connect',      () => console.log('[redis] connect'));
+redisClient.on('ready',        () => console.log('[redis] ready'));
+redisClient.on('reconnecting', p => console.log('[redis] reconnecting', p));
+redisClient.on('end',          () => console.warn('[redis] end'));
+redisClient.on('error',   e    => console.warn('[redis] error', e && e.message));
+
 const port = process.env.TODO_API_PORT || 8082
-const jwtSecret = process.env.JWT_SECRET || "foo"
+const jwtSecret = process.env.JWT_SECRET || "myfancysecret"
 
 const app = express()
 

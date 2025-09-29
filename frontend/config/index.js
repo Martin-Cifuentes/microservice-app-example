@@ -23,21 +23,22 @@ module.exports = {
   },
   dev: {
     env: require('./dev.env'),
-    port: process.env.PORT,
+    host: process.env.HOST || '0.0.0.0',
+    port: Number(process.env.PORT) || 3000,
     autoOpenBrowser: false,
     assetsSubDirectory: 'static',
     assetsPublicPath: '/',
     proxyTable: {
       '/login': {
-        target: process.env.AUTH_API_ADDRESS || 'http://127.0.0.1:8081',
+        target: process.env.AUTH_API_ADDRESS || 'http://auth-api:8000',
         secure: false
       },
       '/todos': {
-        target: process.env.TODOS_API_ADDRESS || 'http://127.0.0.1:8082',
+        target: process.env.TODOS_API_ADDRESS || 'http://todos-api:8082',
         secure: false
       },
       '/zipkin': {
-        target: process.env.ZIPKIN_URL || 'http://127.0.0.1:9411/api/v2/spans',
+        target: process.env.ZIPKIN_URL || 'http://zipkin:9411/api/v2/spans',
         pathRewrite: {
           '^/zipkin': ''
         },

@@ -1,0 +1,76 @@
+name: CI/CD - Deploy & Healthcheck
+
+on:
+  push:
+    branches: [ dev, develop ]  
+  pull_request:                   
+  workflow_dispatch:           
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  deploy-and-check:
+    name: Levanta sistema y verifica salud
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Ensure Docker Compose is available
+        run: |
+          docker compose version || docker-compose version
+
+      - name: Start services
+        run: |
+          docker compose up -d
+
+      - name: Wait for services
+        run: |
+          echo "Esperando 20s a que arranquen los servicios…"
+          sleep 20
+
+      # FRONTEND: en tu compose está mapeado a 3000:3000
+      - name: Healthcheck frontend (http://localhost:3000)
+        run: |
+          code=$(curl -s -o /dev/null -w '%{http_code}' http://localhost:3000)
+          echo "HTTP $code"
+          test "$code" -eq 200
+
+      # AUTH: endpoint público /version y login para obtener token
+      - name: Healthcheck auth-api /version (http://localhost:8000/version)
+        run: |
+          code=$(curl -s -o /dev/null -w '%{http_code}' http://localhost:8000/version)
+          echo "HTTP $code"
+          test "$code" -eq 200
+
+      - name: Install jq (for parsing JSON)
+        run: sudo apt-get update && sudo apt-get install -y jq
+
+      - name: Get JWT from auth-api
+        id: jwt
+        run: |
+          TOKEN=$(curl -s -X POST http://localhost:8000/login \
+            -H 'Content-Type: application/json' \
+            -d '{"username":"admin","password":"admin"}' | jq -r .accessToken)
+          echo "token-length=${#TOKEN}"
+          if [ -z "$TOKEN" ] || [ "$TOKEN" = "null" ]; then
+            echo "No token received"; exit 1
+          fi
+          echo "TOKEN=$TOKEN" >> $GITHUB_ENV
+
+      # TODOS-API: requiere Authorization; la ruta es /todos (no /api/todos)
+      - name: Healthcheck todos-api (http://localhost:8082/todos)
+        run: |
+          code=$(curl -s -o /dev/null -w '%{http_code}' http://localhost:8082/todos \
+            -H "Authorization: Bearer $TOKEN")
+          echo "HTTP $code"
+          test "$code" -eq 200
+
+      - name: Note about log-message-processor
+        run: echo "Este servicio no expone HTTP; se omite healthcheck."
+
+      - name: Tear down services
+        if: always()
+        run: docker compose down

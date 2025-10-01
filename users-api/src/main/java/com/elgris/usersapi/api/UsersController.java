@@ -18,30 +18,30 @@ public class UsersController {
     @Autowired
     private UserRepository userRepository;
 
+    @Autowired
+    private UsersService usersService;
 
     @RequestMapping(value = "/", method = RequestMethod.GET)
     public List<User> getUsers() {
         List<User> response = new LinkedList<>();
         userRepository.findAll().forEach(response::add);
-
         return response;
     }
 
     @RequestMapping(value = "/{username}",  method = RequestMethod.GET)
     public User getUser(HttpServletRequest request, @PathVariable("username") String username) {
-
         Object requestAttribute = request.getAttribute("claims");
         if((requestAttribute == null) || !(requestAttribute instanceof Claims)){
             throw new RuntimeException("Did not receive required data from JWT token");
         }
 
         Claims claims = (Claims) requestAttribute;
-
         if (!username.equalsIgnoreCase((String)claims.get("username"))) {
             throw new AccessDeniedException("No access for requested entity");
         }
 
-        return userRepository.findOneByUsername(username);
+        // ⬇️ aquí el cache-aside: primera vez MISS (DB) y se guarda en Redis;
+        // siguientes peticiones HIT (hasta que expire el TTL)
+        return usersService.getByUsername(username);
     }
-
 }
